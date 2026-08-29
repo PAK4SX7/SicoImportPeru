@@ -364,7 +364,7 @@ const IMG_SIGN = 'https://i.ibb.co/pv4H5cLx/foto-firma.png';
 const IMG_PAY  = 'https://i.ibb.co/ycF2vyJK/Detalles-de-pago-si-o-import.png';
 
 /* ============ STORAGE ============ */
-const LS = { products:'sico_products', quotes:'sico_quotes', counters:'sico_counters', config:'sico_config' };
+const LS = { products:'sico_products', quotes:'sico_quotes', counters:'sico_counters', config:'sico_config', rev:'sico_rev' };
 const DEFAULT_CONFIG = {
   companyName:'SICO IMPORT PERU E.I.R.L', ruc:'20607141241', rnp:'vigente',
   representante:'Juan F. Alberca Ojeda', correo:'suministros1industrialesjn@gmail.com',
@@ -375,14 +375,21 @@ const DEFAULT_CONFIG = {
 };
 function loadJSON(key,fb){ try{ const r=localStorage.getItem(key); return r?JSON.parse(r):fb; }catch(e){ return fb; } }
 function saveJSON(key,val){ localStorage.setItem(key, JSON.stringify(val)); }
+/* ---- Control de versión local (evita que la sincronización con la nube
+   "resucite" algo que el usuario acaba de borrar/agregar). Cada vez que
+   se guarda algo localmente se sube este número; cualquier dato que
+   llegue de la nube con una versión igual o más vieja se ignora. ---- */
+function getLocalRev(){ return parseInt(localStorage.getItem(LS.rev)||'0',10); }
+function setLocalRev(v){ localStorage.setItem(LS.rev, String(v)); }
+function bumpLocalRev(){ const next=Math.max(Date.now(), getLocalRev()+1); setLocalRev(next); return next; }
 function getProducts(){ return loadJSON(LS.products, []); }
-function setProducts(p){ saveJSON(LS.products, p); scheduleCloudSave(); }
+function setProducts(p){ saveJSON(LS.products, p); bumpLocalRev(); scheduleCloudSave(); }
 function getQuotes(){ return loadJSON(LS.quotes, []); }
-function setQuotes(q){ saveJSON(LS.quotes, q); scheduleCloudSave(); }
+function setQuotes(q){ saveJSON(LS.quotes, q); bumpLocalRev(); scheduleCloudSave(); }
 function getConfig(){ return Object.assign({}, DEFAULT_CONFIG, loadJSON(LS.config, {})); }
-function setConfig(c){ saveJSON(LS.config, c); scheduleCloudSave(); }
+function setConfig(c){ saveJSON(LS.config, c); bumpLocalRev(); scheduleCloudSave(); }
 function getCounters(){ return loadJSON(LS.counters, { proformaSeq:49, proformaYear:new Date().getFullYear(), rqSeq:99 }); }
-function setCounters(c){ saveJSON(LS.counters, c); scheduleCloudSave(); }
+function setCounters(c){ saveJSON(LS.counters, c); bumpLocalRev(); scheduleCloudSave(); }
 
 /* ============ SINCRONIZACIÓN CON CLOUDFLARE WORKER ============
    Guarda todo (productos, cotizaciones, contadores, configuración) en
@@ -401,7 +408,8 @@ function scheduleCloudSave(){
 }
 async function cloudSaveState(){
   try{
-    const state = { products:getProducts(), quotes:getQuotes(), counters:getCounters(), config:getConfig() };
+    const rev = getLocalRev();
+    const state = { products:getProducts(), quotes:getQuotes(), counters:getCounters(), config:getConfig(), rev };
     await fetch(WORKER_URL+'/api/state', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
@@ -426,10 +434,22 @@ async function cloudLoadState(){
     if(!res.ok) return false;
     const data = await res.json();
     if(data && (Array.isArray(data.products) || Array.isArray(data.quotes))){
+      // CLAVE: si lo que llegó de la nube es más viejo (o igual) que lo que
+      // ya tenemos en este dispositivo, se ignora por completo. Esto es lo
+      // que evita que un producto recién borrado (o recién agregado) "regrese"
+      // porque el sondeo automático trajo una copia vieja de la nube (ya sea
+      // porque el guardado todavía no terminaba de subirse, o porque el
+      // almacenamiento de Cloudflare tarda unos segundos en propagarse).
+      const hasRev = data.rev!=null;
+      const cloudRev = hasRev ? (Number(data.rev)||0) : null;
+      // Si lo guardado en la nube todavía no tiene "rev" (datos de antes de este
+      // arreglo), se acepta esa única vez para no perder el catálogo existente.
+      if(hasRev && cloudRev<=getLocalRev()) return false;
       if(Array.isArray(data.products)) saveJSON(LS.products, data.products);
       if(Array.isArray(data.quotes)) saveJSON(LS.quotes, data.quotes);
       if(data.counters) saveJSON(LS.counters, data.counters);
       if(data.config) saveJSON(LS.config, data.config);
+      if(hasRev) setLocalRev(cloudRev);
       return true;
     }
   }catch(e){ /* sin internet: seguimos con lo que haya en este dispositivo */ }
