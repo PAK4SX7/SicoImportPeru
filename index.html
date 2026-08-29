@@ -466,11 +466,6 @@ function forceCounterReset(){
   }
 }
 
-function seedIfEmpty(){
-  if(getProducts().length===0){
-    setProducts([{ id: uid(), name:'REGLAMENTO INTERNO DE SEGURIDAD Y SALUD EN EL TRABAJO (144 PAG. A FULL COLOR IMPRESO EN PAPEL BOND, CARATULA FULL COLOR PLASTIFICADO MATE - ENCOLADO AL CALOR)', unit:'UND', price:6.40 }]);
-  }
-}
 /* Corrige unidades que quedaron mal guardadas antes (ej. "11111" por
    autocompletado del teclado) dejándolas en "UND" automáticamente. */
 function fixBrokenUnits(){
@@ -1178,7 +1173,6 @@ async function initApp(){
   await cloudLoadState(); // trae el historial/productos guardados en el Worker (si hay internet)
   cloudSyncing = false;
   forceCounterReset();
-  seedIfEmpty();
   fixBrokenUnits();
   tickClock();
   navigate('dashboard');
