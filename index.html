@@ -379,7 +379,7 @@ function saveJSON(key,val){ localStorage.setItem(key, JSON.stringify(val)); }
    "resucite" algo que el usuario acaba de borrar/agregar). Cada vez que
    se guarda algo localmente se sube este número; cualquier dato que
    llegue de la nube con una versión igual o más vieja se ignora. ---- */
-function getLocalRev(){ return parseInt(localStorage.getItem(LS.rev)||'0',10); }
+function getLocalRev(){ const v=localStorage.getItem(LS.rev); return v==null?-1:(parseInt(v,10)||0); }
 function setLocalRev(v){ localStorage.setItem(LS.rev, String(v)); }
 function bumpLocalRev(){ const next=Math.max(Date.now(), getLocalRev()+1); setLocalRev(next); return next; }
 function getProducts(){ return loadJSON(LS.products, []); }
@@ -434,22 +434,22 @@ async function cloudLoadState(){
     if(!res.ok) return false;
     const data = await res.json();
     if(data && (Array.isArray(data.products) || Array.isArray(data.quotes))){
-      // CLAVE: si lo que llegó de la nube es más viejo (o igual) que lo que
-      // ya tenemos en este dispositivo, se ignora por completo. Esto es lo
+      // CLAVE: si lo que llegó de la nube no es más nuevo que lo que ya
+      // tenemos en este dispositivo, se ignora por completo. Esto es lo
       // que evita que un producto recién borrado (o recién agregado) "regrese"
       // porque el sondeo automático trajo una copia vieja de la nube (ya sea
       // porque el guardado todavía no terminaba de subirse, o porque el
       // almacenamiento de Cloudflare tarda unos segundos en propagarse).
-      const hasRev = data.rev!=null;
-      const cloudRev = hasRev ? (Number(data.rev)||0) : null;
-      // Si lo guardado en la nube todavía no tiene "rev" (datos de antes de este
-      // arreglo), se acepta esa única vez para no perder el catálogo existente.
-      if(hasRev && cloudRev<=getLocalRev()) return false;
+      // Un dispositivo nuevo (que nunca guardó nada localmente) siempre
+      // parte en -1, así que la primera vez sí adopta el catálogo compartido
+      // tal cual esté, aunque sea una copia antigua sin "rev".
+      const cloudRev = Number(data.rev)||0;
+      if(cloudRev<=getLocalRev()) return false;
       if(Array.isArray(data.products)) saveJSON(LS.products, data.products);
       if(Array.isArray(data.quotes)) saveJSON(LS.quotes, data.quotes);
       if(data.counters) saveJSON(LS.counters, data.counters);
       if(data.config) saveJSON(LS.config, data.config);
-      if(hasRev) setLocalRev(cloudRev);
+      setLocalRev(cloudRev);
       return true;
     }
   }catch(e){ /* sin internet: seguimos con lo que haya en este dispositivo */ }
