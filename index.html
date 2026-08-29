@@ -36,10 +36,24 @@
   #sidebar-overlay{display:none;}
   .hamburger-btn{display:none;background:transparent;border:1px solid var(--border);color:var(--text);width:36px;height:36px;border-radius:8px;align-items:center;justify-content:center;cursor:pointer;}
   .hamburger-btn svg{width:18px;height:18px;}
-  .install-btn{display:flex;align-items:center;gap:7px;background:var(--amber);color:#1a1200;border:none;border-radius:8px;padding:8px 14px;font-weight:700;font-size:12.5px;cursor:pointer;white-space:nowrap;}
-  .install-btn:hover{background:var(--amber-deep);}
-  .install-btn svg{width:16px;height:16px;}
-  @media (max-width:560px){ .install-btn span{display:none;} .install-btn{padding:8px;} }
+  .install-banner{display:none;align-items:center;gap:12px;background:linear-gradient(90deg,#2a2007,#1c1608);border-bottom:1px solid var(--amber-deep);padding:10px 16px;position:relative;z-index:500;}
+  .install-banner.show{display:flex;}
+  .install-banner .ib-icon{flex:0 0 auto;width:34px;height:34px;border-radius:9px;background:var(--amber);display:flex;align-items:center;justify-content:center;}
+  .install-banner .ib-icon svg{width:19px;height:19px;color:#1a1200;}
+  .install-banner .ib-text{flex:1;min-width:0;}
+  .install-banner .ib-text b{display:block;font-size:13px;color:var(--text);}
+  .install-banner .ib-text span{display:block;font-size:11.5px;color:var(--text-dim);}
+  .install-banner .ib-actions{flex:0 0 auto;display:flex;align-items:center;gap:8px;}
+  .install-banner .ib-install{background:var(--amber);color:#1a1200;border:none;border-radius:8px;padding:9px 16px;font-weight:800;font-size:12.5px;cursor:pointer;white-space:nowrap;}
+  .install-banner .ib-install:hover{background:var(--amber-deep);}
+  .install-banner .ib-close{background:transparent;border:none;color:var(--text-dim);width:28px;height:28px;border-radius:7px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex:0 0 auto;}
+  .install-banner .ib-close:hover{background:rgba(255,255,255,.08);color:var(--text);}
+  .install-banner .ib-close svg{width:16px;height:16px;}
+  @media (max-width:560px){
+    .install-banner .ib-text span{display:none;}
+    .install-banner .ib-text b{font-size:12px;}
+    .install-banner{padding:9px 10px;gap:8px;}
+  }
 
   @media (max-width:820px){
     #app{position:relative;overflow:hidden;}
@@ -251,6 +265,22 @@
 </head>
 <body>
 
+<div id="install-banner" class="install-banner">
+  <div class="ib-icon">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
+  </div>
+  <div class="ib-text">
+    <b>Instala esta app para una mejor experiencia</b>
+    <span>Se abre más rápido y funciona como una app normal en tu dispositivo</span>
+  </div>
+  <div class="ib-actions">
+    <button class="ib-install" onclick="installApp()">Instalar App</button>
+    <button class="ib-close" onclick="dismissInstallBanner()" title="Cerrar" aria-label="Cerrar">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+    </button>
+  </div>
+</div>
+
 <div id="app">
   <div id="sidebar-overlay" onclick="closeSidebar()"></div>
   <aside id="sidebar">
@@ -291,10 +321,6 @@
         <div><h1 id="page-title">Dashboard</h1><div class="sub" id="page-sub">Resumen general del negocio</div></div>
       </div>
       <div style="display:flex;align-items:center;gap:12px;">
-        <button id="install-app-btn" class="install-btn" onclick="installApp()" style="display:none;" title="Instalar esta app en tu dispositivo">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
-          <span>Instalar app</span>
-        </button>
         <div class="clock"><b id="clock-date">--</b><br><span id="clock-time">--</span></div>
       </div>
     </div>
@@ -1162,7 +1188,7 @@ function startCloudPolling(){
 
 /* ============ PWA: instalación como app ============
    Registra el service worker (necesario para que el navegador la
-   considere instalable) y maneja el botón "Instalar app" del topbar. */
+   considere instalable) y maneja el banner "Instala esta app...". */
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
     navigator.serviceWorker.register('sw.js').catch(()=>{ /* si falla, la app sigue funcionando normal, solo sin cache offline */ });
@@ -1170,24 +1196,46 @@ if('serviceWorker' in navigator){
 }
 
 let deferredInstallPrompt = null;
+function showInstallBanner(){
+  // si el usuario ya lo cerró antes (en este dispositivo), no se lo vuelve a mostrar
+  if(localStorage.getItem('sico_install_banner_dismissed')==='1') return;
+  const banner = document.getElementById('install-banner');
+  if(!banner) return;
+  banner.classList.add('show');
+  // en pantallas grandes #app usa height:100vh fijo; se le resta el alto
+  // del banner para que no se corte nada abajo
+  const appEl = document.getElementById('app');
+  if(appEl && window.innerWidth > 900) appEl.style.height = `calc(100vh - ${banner.offsetHeight}px)`;
+}
+function hideInstallBanner(){
+  const banner = document.getElementById('install-banner');
+  if(banner) banner.classList.remove('show');
+  const appEl = document.getElementById('app');
+  if(appEl) appEl.style.height = '';
+}
+function dismissInstallBanner(){
+  localStorage.setItem('sico_install_banner_dismissed', '1');
+  hideInstallBanner();
+}
 window.addEventListener('beforeinstallprompt', (e)=>{
   e.preventDefault();
   deferredInstallPrompt = e;
-  const btn = document.getElementById('install-app-btn');
-  if(btn) btn.style.display = 'flex';
+  showInstallBanner();
 });
 async function installApp(){
   if(!deferredInstallPrompt) return;
   deferredInstallPrompt.prompt();
   await deferredInstallPrompt.userChoice;
   deferredInstallPrompt = null;
-  const btn = document.getElementById('install-app-btn');
-  if(btn) btn.style.display = 'none';
+  hideInstallBanner();
 }
 window.addEventListener('appinstalled', ()=>{
-  const btn = document.getElementById('install-app-btn');
-  if(btn) btn.style.display = 'none';
+  hideInstallBanner();
   toast('App instalada correctamente', 'success');
+});
+window.addEventListener('resize', ()=>{
+  const banner = document.getElementById('install-banner');
+  if(banner && banner.classList.contains('show')) showInstallBanner();
 });
 // En iPhone/iPad (Safari) no existe el evento beforeinstallprompt: no hay
 // forma de disparar la instalación por código, el usuario debe usar
